@@ -48,7 +48,7 @@ mod tests {
         assert_eq!(AppError::NotFound.to_string(), "Not Found");
         assert_eq!(AppError::Unauthorized.to_string(), "Unauthorized");
         
-        let io_err = io::Error::new(io::ErrorKind::Other, "test error");
+        let io_err = io::Error::other("test error");
         let app_err = AppError::from(io_err);
         assert_eq!(app_err.to_string(), "Storage IO Error: test error");
     }
@@ -59,7 +59,7 @@ mod tests {
         assert_eq!(AppError::NotFound.status_code(), StatusCode::NOT_FOUND);
         assert_eq!(AppError::Unauthorized.status_code(), StatusCode::UNAUTHORIZED);
         
-        let io_err = io::Error::new(io::ErrorKind::Other, "test error");
+        let io_err = io::Error::other("test error");
         let app_err = AppError::from(io_err);
         assert_eq!(app_err.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
     }

@@ -15,6 +15,10 @@ pub struct StoreKey {
 
 impl StoreKey {
     /// Creates a new `StoreKey`.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The string representation of the path.
     #[must_use]
     pub const fn new(path: String) -> Self {
         Self { path }
@@ -163,8 +167,8 @@ mod tests {
         let data = Bytes::from_static(b"hello world");
 
         // PUT should fail because base_dir is a file, so it cannot create dirs/files inside it.
-        let put_err = store.put(&key, data).await.unwrap_err();
-        assert!(matches!(put_err, AppError::IoError(_)));
+        let put_res = store.put(&key, data).await;
+        assert!(matches!(put_res, Err(AppError::IoError(_))));
 
         // GET should return None if the parent doesn't exist/is a file (NotFound or NotADirectory mapped to error)
         let get_res = store.get(&key).await;

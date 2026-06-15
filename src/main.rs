@@ -12,9 +12,15 @@ pub mod api;
 pub mod error;
 pub mod storage;
 
+#[cfg(not(test))]
 use actix_web::{web, App, HttpResponse, HttpServer};
+#[cfg(test)]
+use actix_web::HttpResponse;
+#[cfg(not(test))]
 use std::env;
+#[cfg(not(test))]
 use std::io;
+#[cfg(not(test))]
 use std::path::PathBuf;
 
 /// Health check endpoint to verify the service is running.

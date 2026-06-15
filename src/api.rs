@@ -43,6 +43,13 @@ pub struct DownloadParams {
 
 /// Handles the uploading of an artifact.
 ///
+/// # Arguments
+///
+/// * `req` - The incoming HTTP request.
+/// * `state` - The application state containing the store.
+/// * `path` - The path parameters (`org_id`, `repo_id`, `version`).
+/// * `body` - The request body payload.
+///
 /// # Errors
 /// Returns an `AppError` if authentication fails or if the storage operation fails.
 #[allow(clippy::future_not_send)]
@@ -74,6 +81,12 @@ pub async fn upload_artifact(
 }
 
 /// Handles downloading an artifact with caching.
+///
+/// # Arguments
+///
+/// * `req` - The incoming HTTP request.
+/// * `state` - The application state containing the store.
+/// * `path` - The path parameters (`org_id`, `repo_id`, `file_path`).
 ///
 /// # Errors
 /// Returns an `AppError` if the storage operation fails.
@@ -250,7 +263,11 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(state))
-                .route("/artifact/{org_id}/{repo_id}/{file_path:.*}", web::get().to(download_artifact)),
+                .route(
+                    #[allow(clippy::literal_string_with_formatting_args)]
+                    "/artifact/{org_id}/{repo_id}/{file_path:.*}",
+                    web::get().to(download_artifact),
+                ),
         )
         .await;
 
@@ -297,7 +314,11 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(state))
-                .route("/artifact/{org_id}/{repo_id}/{file_path:.*}", web::get().to(download_artifact)),
+                .route(
+                    #[allow(clippy::literal_string_with_formatting_args)]
+                    "/artifact/{org_id}/{repo_id}/{file_path:.*}",
+                    web::get().to(download_artifact),
+                ),
         )
         .await;
 
@@ -324,7 +345,11 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(state))
-                .route("/artifact/{org_id}/{repo_id}/{file_path:.*}", web::get().to(download_artifact)),
+                .route(
+                    #[allow(clippy::literal_string_with_formatting_args)]
+                    "/artifact/{org_id}/{repo_id}/{file_path:.*}",
+                    web::get().to(download_artifact),
+                ),
         )
         .await;
 
@@ -334,6 +359,65 @@ mod tests {
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::NOT_FOUND);
+
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_upload_artifact_io_error() -> Result<(), Box<dyn Error>> {
+        let tmp_file = tempfile::NamedTempFile::new()?;
+        let store = LocalDiskStore::new(tmp_file.path().to_path_buf());
+        let state = AppState {
+            store,
+            api_key: String::from("secret"),
+        };
+
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(state))
+                .route("/upload/{org_id}/{repo_id}/{version}", web::post().to(upload_artifact)),
+        )
+        .await;
+
+        let req = test::TestRequest::post()
+            .uri("/upload/my-org/my-repo/v1")
+            .insert_header((header::AUTHORIZATION, "Bearer secret"))
+            .set_payload("test data")
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), actix_web::http::StatusCode::INTERNAL_SERVER_ERROR);
+
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_download_artifact_io_error() -> Result<(), Box<dyn Error>> {
+        let tmp_file = tempfile::NamedTempFile::new()?;
+        let store = LocalDiskStore::new(tmp_file.path().to_path_buf());
+        let state = AppState {
+            store,
+            api_key: String::from("secret"),
+        };
+
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(state))
+                .route(
+                    #[allow(clippy::literal_string_with_formatting_args)]
+                    "/artifact/{org_id}/{repo_id}/{file_path:.*}",
+                    web::get().to(download_artifact),
+                ),
+        )
+        .await;
+
+        let req = test::TestRequest::get()
+            .uri("/artifact/my-org/my-repo/schema.json")
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        let status = resp.status();
+        assert!(status == actix_web::http::StatusCode::INTERNAL_SERVER_ERROR || status == actix_web::http::StatusCode::NOT_FOUND);
 
         Ok(())
     }
