@@ -25,7 +25,9 @@ pub enum AppError {
 impl ResponseError for AppError {
     fn status_code(&self) -> actix_web::http::StatusCode {
         match self {
-            Self::InternalError | Self::IoError(_) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Self::InternalError | Self::IoError(_) => {
+                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
+            }
             Self::NotFound => actix_web::http::StatusCode::NOT_FOUND,
             Self::Unauthorized => actix_web::http::StatusCode::UNAUTHORIZED,
         }
@@ -47,7 +49,7 @@ mod tests {
         assert_eq!(AppError::InternalError.to_string(), "Internal Server Error");
         assert_eq!(AppError::NotFound.to_string(), "Not Found");
         assert_eq!(AppError::Unauthorized.to_string(), "Unauthorized");
-        
+
         let io_err = io::Error::other("test error");
         let app_err = AppError::from(io_err);
         assert_eq!(app_err.to_string(), "Storage IO Error: test error");
@@ -55,10 +57,16 @@ mod tests {
 
     #[test]
     fn test_app_error_response_status() {
-        assert_eq!(AppError::InternalError.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            AppError::InternalError.status_code(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
         assert_eq!(AppError::NotFound.status_code(), StatusCode::NOT_FOUND);
-        assert_eq!(AppError::Unauthorized.status_code(), StatusCode::UNAUTHORIZED);
-        
+        assert_eq!(
+            AppError::Unauthorized.status_code(),
+            StatusCode::UNAUTHORIZED
+        );
+
         let io_err = io::Error::other("test error");
         let app_err = AppError::from(io_err);
         assert_eq!(app_err.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
@@ -68,7 +76,7 @@ mod tests {
     fn test_app_error_response_body() {
         let resp = AppError::InternalError.error_response();
         assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
-        
+
         let resp_not_found = AppError::NotFound.error_response();
         assert_eq!(resp_not_found.status(), StatusCode::NOT_FOUND);
 

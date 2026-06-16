@@ -51,7 +51,7 @@ pub trait ArtifactStore: Send + Sync + Clone + 'static {
         &self,
         key: &StoreKey,
     ) -> impl std::future::Future<Output = Result<Option<(Bytes, std::time::SystemTime)>, AppError>> + Send;
-    
+
     /// Deletes the data from the store at the given `key`.
     ///
     /// # Errors
@@ -93,7 +93,10 @@ impl ArtifactStore for LocalDiskStore {
         Ok(())
     }
 
-    async fn get(&self, key: &StoreKey) -> Result<Option<(Bytes, std::time::SystemTime)>, AppError> {
+    async fn get(
+        &self,
+        key: &StoreKey,
+    ) -> Result<Option<(Bytes, std::time::SystemTime)>, AppError> {
         let file_path = self.resolve_path(key);
         let metadata = match fs::metadata(&file_path).await {
             Ok(m) => m,

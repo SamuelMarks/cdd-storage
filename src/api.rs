@@ -1,10 +1,10 @@
 //! API endpoints and handlers.
 
-use actix_web::{web, HttpRequest, HttpResponse, Responder};
 use actix_web::http::header;
-use serde::Deserialize;
-use sha1::{Sha1, Digest};
+use actix_web::{HttpRequest, HttpResponse, Responder, web};
 use httpdate::fmt_http_date;
+use serde::Deserialize;
+use sha1::{Digest, Sha1};
 use std::fmt::Write;
 
 use crate::error::AppError;
@@ -61,10 +61,8 @@ pub async fn upload_artifact(
 ) -> Result<impl Responder, AppError> {
     let auth_header = req.headers().get(header::AUTHORIZATION);
     let expected_auth = format!("Bearer {}", state.api_key);
-    let is_authorized = auth_header.is_some_and(|h| {
-        h.to_str().is_ok_and(|s| s == expected_auth)
-    });
-    
+    let is_authorized = auth_header.is_some_and(|h| h.to_str().is_ok_and(|s| s == expected_auth));
+
     // Drop the request to ensure the async function remains `Send`
     drop(req);
 
@@ -72,7 +70,10 @@ pub async fn upload_artifact(
         return Err(AppError::Unauthorized);
     }
 
-    let key_path = format!("{}/{}/{}/artifact.bin", path.org_id, path.repo_id, path.version);
+    let key_path = format!(
+        "{}/{}/{}/artifact.bin",
+        path.org_id, path.repo_id, path.version
+    );
     let store_key = StoreKey::new(key_path);
 
     state.store.put(&store_key, body).await?;
@@ -99,13 +100,17 @@ pub async fn download_artifact(
     let key_path = format!("{}/{}/{}", path.org_id, path.repo_id, path.file_path);
     let store_key = StoreKey::new(key_path);
 
-    let (data, modified) = state.store.get(&store_key).await?.ok_or(AppError::NotFound)?;
-    
+    let (data, modified) = state
+        .store
+        .get(&store_key)
+        .await?
+        .ok_or(AppError::NotFound)?;
+
     // Generate ETag
     let mut hasher = Sha1::new();
     hasher.update(&data);
     let hash = hasher.finalize();
-    
+
     let mut etag_string = String::with_capacity(42);
     etag_string.push('"');
     for b in hash {
@@ -114,10 +119,14 @@ pub async fn download_artifact(
     etag_string.push('"');
 
     // Check If-None-Match
-    if req.headers().get(header::IF_NONE_MATCH).is_some_and(|if_none_match| if_none_match.to_str().is_ok_and(|s| s == etag_string)) {
+    if req
+        .headers()
+        .get(header::IF_NONE_MATCH)
+        .is_some_and(|if_none_match| if_none_match.to_str().is_ok_and(|s| s == etag_string))
+    {
         return Ok(HttpResponse::NotModified().finish());
     }
-    
+
     // Format Last-Modified
     let last_modified_http = fmt_http_date(modified);
 
@@ -132,7 +141,7 @@ pub async fn download_artifact(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use actix_web::{http::header, test, App};
+    use actix_web::{App, http::header, test};
     use std::error::Error;
     use tempfile::TempDir;
 
@@ -145,11 +154,10 @@ mod tests {
             api_key: String::from("secret"),
         };
 
-        let app = test::init_service(
-            App::new()
-                .app_data(web::Data::new(state))
-                .route("/upload/{org_id}/{repo_id}/{version}", web::post().to(upload_artifact)),
-        )
+        let app = test::init_service(App::new().app_data(web::Data::new(state)).route(
+            "/upload/{org_id}/{repo_id}/{version}",
+            web::post().to(upload_artifact),
+        ))
         .await;
 
         let req = test::TestRequest::post()
@@ -173,11 +181,10 @@ mod tests {
             api_key: String::from("secret"),
         };
 
-        let app = test::init_service(
-            App::new()
-                .app_data(web::Data::new(state))
-                .route("/upload/{org_id}/{repo_id}/{version}", web::post().to(upload_artifact)),
-        )
+        let app = test::init_service(App::new().app_data(web::Data::new(state)).route(
+            "/upload/{org_id}/{repo_id}/{version}",
+            web::post().to(upload_artifact),
+        ))
         .await;
 
         let req = test::TestRequest::post()
@@ -200,11 +207,10 @@ mod tests {
             api_key: String::from("secret"),
         };
 
-        let app = test::init_service(
-            App::new()
-                .app_data(web::Data::new(state))
-                .route("/upload/{org_id}/{repo_id}/{version}", web::post().to(upload_artifact)),
-        )
+        let app = test::init_service(App::new().app_data(web::Data::new(state)).route(
+            "/upload/{org_id}/{repo_id}/{version}",
+            web::post().to(upload_artifact),
+        ))
         .await;
 
         let req = test::TestRequest::post()
@@ -228,11 +234,10 @@ mod tests {
             api_key: String::from("secret"),
         };
 
-        let app = test::init_service(
-            App::new()
-                .app_data(web::Data::new(state))
-                .route("/upload/{org_id}/{repo_id}/{version}", web::post().to(upload_artifact)),
-        )
+        let app = test::init_service(App::new().app_data(web::Data::new(state)).route(
+            "/upload/{org_id}/{repo_id}/{version}",
+            web::post().to(upload_artifact),
+        ))
         .await;
 
         let req = test::TestRequest::post()
@@ -255,20 +260,16 @@ mod tests {
             store: store.clone(),
             api_key: String::from("secret"),
         };
-        
+
         let payload = web::Bytes::from_static(b"test data");
         let key = StoreKey::new(String::from("my-org/my-repo/schema.json"));
         store.put(&key, payload).await?;
 
-        let app = test::init_service(
-            App::new()
-                .app_data(web::Data::new(state))
-                .route(
-                    #[allow(clippy::literal_string_with_formatting_args)]
-                    "/artifact/{org_id}/{repo_id}/{file_path:.*}",
-                    web::get().to(download_artifact),
-                ),
-        )
+        let app = test::init_service(App::new().app_data(web::Data::new(state)).route(
+            #[allow(clippy::literal_string_with_formatting_args)]
+            "/artifact/{org_id}/{repo_id}/{file_path:.*}",
+            web::get().to(download_artifact),
+        ))
         .await;
 
         let req = test::TestRequest::get()
@@ -277,9 +278,17 @@ mod tests {
 
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
-        
-        let etag = resp.headers().get(header::ETAG).ok_or("ETag missing")?.to_str()?;
-        let last_modified = resp.headers().get(header::LAST_MODIFIED).ok_or("Last-Modified missing")?.to_str()?;
+
+        let etag = resp
+            .headers()
+            .get(header::ETAG)
+            .ok_or("ETag missing")?
+            .to_str()?;
+        let last_modified = resp
+            .headers()
+            .get(header::LAST_MODIFIED)
+            .ok_or("Last-Modified missing")?
+            .to_str()?;
         assert!(!etag.is_empty());
         assert!(!last_modified.is_empty());
 
@@ -294,16 +303,16 @@ mod tests {
             store: store.clone(),
             api_key: String::from("secret"),
         };
-        
+
         let payload = web::Bytes::from_static(b"test data");
         let key = StoreKey::new(String::from("my-org/my-repo/schema.json"));
         store.put(&key, payload).await?;
-        
+
         // Compute expected ETag
         let mut hasher = Sha1::new();
         hasher.update(b"test data");
         let hash = hasher.finalize();
-        
+
         let mut expected_etag = String::with_capacity(42);
         expected_etag.push('"');
         for b in hash {
@@ -311,15 +320,11 @@ mod tests {
         }
         expected_etag.push('"');
 
-        let app = test::init_service(
-            App::new()
-                .app_data(web::Data::new(state))
-                .route(
-                    #[allow(clippy::literal_string_with_formatting_args)]
-                    "/artifact/{org_id}/{repo_id}/{file_path:.*}",
-                    web::get().to(download_artifact),
-                ),
-        )
+        let app = test::init_service(App::new().app_data(web::Data::new(state)).route(
+            #[allow(clippy::literal_string_with_formatting_args)]
+            "/artifact/{org_id}/{repo_id}/{file_path:.*}",
+            web::get().to(download_artifact),
+        ))
         .await;
 
         let req = test::TestRequest::get()
@@ -342,15 +347,11 @@ mod tests {
             api_key: String::from("secret"),
         };
 
-        let app = test::init_service(
-            App::new()
-                .app_data(web::Data::new(state))
-                .route(
-                    #[allow(clippy::literal_string_with_formatting_args)]
-                    "/artifact/{org_id}/{repo_id}/{file_path:.*}",
-                    web::get().to(download_artifact),
-                ),
-        )
+        let app = test::init_service(App::new().app_data(web::Data::new(state)).route(
+            #[allow(clippy::literal_string_with_formatting_args)]
+            "/artifact/{org_id}/{repo_id}/{file_path:.*}",
+            web::get().to(download_artifact),
+        ))
         .await;
 
         let req = test::TestRequest::get()
@@ -372,11 +373,10 @@ mod tests {
             api_key: String::from("secret"),
         };
 
-        let app = test::init_service(
-            App::new()
-                .app_data(web::Data::new(state))
-                .route("/upload/{org_id}/{repo_id}/{version}", web::post().to(upload_artifact)),
-        )
+        let app = test::init_service(App::new().app_data(web::Data::new(state)).route(
+            "/upload/{org_id}/{repo_id}/{version}",
+            web::post().to(upload_artifact),
+        ))
         .await;
 
         let req = test::TestRequest::post()
@@ -386,7 +386,10 @@ mod tests {
             .to_request();
 
         let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), actix_web::http::StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            resp.status(),
+            actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
 
         Ok(())
     }
@@ -400,15 +403,11 @@ mod tests {
             api_key: String::from("secret"),
         };
 
-        let app = test::init_service(
-            App::new()
-                .app_data(web::Data::new(state))
-                .route(
-                    #[allow(clippy::literal_string_with_formatting_args)]
-                    "/artifact/{org_id}/{repo_id}/{file_path:.*}",
-                    web::get().to(download_artifact),
-                ),
-        )
+        let app = test::init_service(App::new().app_data(web::Data::new(state)).route(
+            #[allow(clippy::literal_string_with_formatting_args)]
+            "/artifact/{org_id}/{repo_id}/{file_path:.*}",
+            web::get().to(download_artifact),
+        ))
         .await;
 
         let req = test::TestRequest::get()
@@ -417,7 +416,72 @@ mod tests {
 
         let resp = test::call_service(&app, req).await;
         let status = resp.status();
-        assert!(status == actix_web::http::StatusCode::INTERNAL_SERVER_ERROR || status == actix_web::http::StatusCode::NOT_FOUND);
+        assert!(
+            status == actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
+                || status == actix_web::http::StatusCode::NOT_FOUND
+        );
+
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_download_artifact_etag_mismatch() -> Result<(), Box<dyn Error>> {
+        let tmp_dir = TempDir::new()?;
+        let store = LocalDiskStore::new(tmp_dir.path().to_path_buf());
+        let state = AppState {
+            store: store.clone(),
+            api_key: String::from("secret"),
+        };
+
+        let payload = web::Bytes::from_static(b"test data");
+        let key = StoreKey::new(String::from("my-org/my-repo/schema.json"));
+        store.put(&key, payload).await?;
+
+        let app = test::init_service(App::new().app_data(web::Data::new(state)).route(
+            #[allow(clippy::literal_string_with_formatting_args)]
+            "/artifact/{org_id}/{repo_id}/{file_path:.*}",
+            web::get().to(download_artifact),
+        ))
+        .await;
+
+        let req = test::TestRequest::get()
+            .uri("/artifact/my-org/my-repo/schema.json")
+            .insert_header((header::IF_NONE_MATCH, "\"wrong-etag\""))
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_download_artifact_etag_bad_header() -> Result<(), Box<dyn Error>> {
+        let tmp_dir = TempDir::new()?;
+        let store = LocalDiskStore::new(tmp_dir.path().to_path_buf());
+        let state = AppState {
+            store: store.clone(),
+            api_key: String::from("secret"),
+        };
+
+        let payload = web::Bytes::from_static(b"test data");
+        let key = StoreKey::new(String::from("my-org/my-repo/schema.json"));
+        store.put(&key, payload).await?;
+
+        let app = test::init_service(App::new().app_data(web::Data::new(state)).route(
+            #[allow(clippy::literal_string_with_formatting_args)]
+            "/artifact/{org_id}/{repo_id}/{file_path:.*}",
+            web::get().to(download_artifact),
+        ))
+        .await;
+
+        let req = test::TestRequest::get()
+            .uri("/artifact/my-org/my-repo/schema.json")
+            .insert_header((header::IF_NONE_MATCH, b"\xff\xff\xff".as_slice())) // invalid utf-8
+            .to_request();
+
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
 
         Ok(())
     }

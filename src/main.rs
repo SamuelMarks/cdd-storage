@@ -12,10 +12,10 @@ pub mod api;
 pub mod error;
 pub mod storage;
 
-#[cfg(not(test))]
-use actix_web::{web, App, HttpResponse, HttpServer};
 #[cfg(test)]
 use actix_web::HttpResponse;
+#[cfg(not(test))]
+use actix_web::{App, HttpResponse, HttpServer, web};
 #[cfg(not(test))]
 use std::env;
 #[cfg(not(test))]
@@ -43,20 +43,26 @@ pub async fn health_check() -> HttpResponse {
 #[allow(clippy::literal_string_with_formatting_args)]
 async fn main() -> io::Result<()> {
     let port = 8080;
-    
+
     // Fallback configurations for local development
     let base_dir = env::var("STORAGE_DIR").unwrap_or_else(|_| String::from("./data"));
     let api_key = env::var("API_KEY").unwrap_or_else(|_| String::from("dev-secret-key"));
 
     let store = storage::LocalDiskStore::new(PathBuf::from(base_dir));
     let state = api::AppState { store, api_key };
-    
+
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(state.clone()))
             .route("/health", web::get().to(health_check))
-            .route("/upload/{org_id}/{repo_id}/{version}", web::post().to(api::upload_artifact))
-            .route("/artifact/{org_id}/{repo_id}/{file_path:.*}", web::get().to(api::download_artifact))
+            .route(
+                "/upload/{org_id}/{repo_id}/{version}",
+                web::post().to(api::upload_artifact),
+            )
+            .route(
+                "/artifact/{org_id}/{repo_id}/{file_path:.*}",
+                web::get().to(api::download_artifact),
+            )
     })
     .bind(("127.0.0.1", port))?
     .run()
