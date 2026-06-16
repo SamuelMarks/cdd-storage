@@ -177,18 +177,22 @@ mod tests {
         let get_res = store.get(&key).await;
         // In many OS, reading inside a file returns ENOTDIR which is an error, not NotFound.
         // So we expect an Err here, or possibly None if it translates to NotFound.
-        match get_res {
-            Err(AppError::IoError(_)) | Ok(None) => (),
-            _ => panic!("Expected IoError or None"),
-        }
+        assert!(matches!(get_res, Err(AppError::IoError(_)) | Ok(None)));
 
         // DELETE should also handle ENOTDIR or similar without panicking
         let delete_res = store.delete(&key).await;
-        match delete_res {
-            Err(AppError::IoError(_)) | Ok(()) => (),
-            _ => panic!("Expected IoError or Ok"),
-        }
+        assert!(matches!(delete_res, Err(AppError::IoError(_)) | Ok(())));
 
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_local_disk_store_no_parent() {
+        let store = LocalDiskStore::new(PathBuf::new());
+        let key = StoreKey::new(String::new());
+        // file_path will be "", which has no parent, covering the empty parent branch.
+        // The write will fail because "" is not a valid file path to write.
+        let put_res = store.put(&key, Bytes::from_static(b"")).await;
+        assert!(matches!(put_res, Err(AppError::IoError(_))));
     }
 }
