@@ -42,7 +42,10 @@ pub async fn health_check() -> HttpResponse {
 #[actix_web::main]
 #[allow(clippy::literal_string_with_formatting_args)]
 async fn main() -> io::Result<()> {
-    let port = 8080;
+    let port: u16 = std::env::var("PORT")
+        .unwrap_or_else(|_| String::from("8085"))
+        .parse()
+        .unwrap_or(8085);
 
     // Fallback configurations for local development
     let base_dir = env::var("STORAGE_DIR").unwrap_or_else(|_| String::from("./data"));
