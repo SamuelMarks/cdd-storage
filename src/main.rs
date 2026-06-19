@@ -8,8 +8,11 @@
 #![deny(missing_docs)]
 #![deny(clippy::missing_docs_in_private_items)]
 
+/// API endpoints and handlers.
 pub mod api;
+/// Application error types.
 pub mod error;
+/// Storage backend definitions and implementations.
 pub mod storage;
 
 #[cfg(test)]
@@ -73,9 +76,11 @@ async fn main() -> io::Result<()> {
 }
 
 #[cfg(test)]
+/// Unit tests for the main module.
 mod tests {
     use super::*;
 
+    /// Tests that the health check endpoint returns an OK status.
     #[actix_web::test]
     async fn test_health_check_ok() {
         let resp = health_check().await;

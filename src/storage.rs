@@ -103,7 +103,9 @@ impl ArtifactStore for LocalDiskStore {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(e) => return Err(AppError::from(e)),
         };
-        let modified = metadata.modified().map_err(AppError::from)?;
+        let modified = metadata
+            .modified()
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
         let data = fs::read(&file_path).await.map_err(AppError::from)?;
         Ok(Some((Bytes::from(data), modified)))
     }
@@ -183,6 +185,17 @@ mod tests {
         let delete_res = store.delete(&key).await;
         assert!(matches!(delete_res, Err(AppError::IoError(_)) | Ok(())));
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_local_disk_store_get_dir() -> Result<(), Box<dyn std::error::Error>> {
+        let tmp_dir = tempfile::TempDir::new()?;
+        let store = LocalDiskStore::new(tmp_dir.path().to_path_buf());
+        let key = StoreKey::new(String::from("dir"));
+        tokio::fs::create_dir(tmp_dir.path().join("dir")).await?;
+        let res = store.get(&key).await;
+        assert!(matches!(res, Err(AppError::IoError(_))));
         Ok(())
     }
 

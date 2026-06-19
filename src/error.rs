@@ -23,6 +23,7 @@ pub enum AppError {
 }
 
 impl ResponseError for AppError {
+    /// Returns the appropriate HTTP status code for the error.
     fn status_code(&self) -> actix_web::http::StatusCode {
         match self {
             Self::InternalError | Self::IoError(_) => {
@@ -33,17 +34,20 @@ impl ResponseError for AppError {
         }
     }
 
+    /// Creates an HTTP response for the error.
     fn error_response(&self) -> HttpResponse {
         HttpResponse::build(self.status_code()).body(self.to_string())
     }
 }
 
 #[cfg(test)]
+/// Unit tests for the application errors.
 mod tests {
     use super::*;
     use actix_web::http::StatusCode;
     use std::io;
 
+    /// Tests the `Display` format of `AppError`.
     #[test]
     fn test_app_error_display() {
         assert_eq!(AppError::InternalError.to_string(), "Internal Server Error");
@@ -55,6 +59,7 @@ mod tests {
         assert_eq!(app_err.to_string(), "Storage IO Error: test error");
     }
 
+    /// Tests the status code associated with `AppError`.
     #[test]
     fn test_app_error_response_status() {
         assert_eq!(
@@ -72,6 +77,7 @@ mod tests {
         assert_eq!(app_err.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
+    /// Tests the generated HTTP response from `AppError`.
     #[test]
     fn test_app_error_response_body() {
         let resp = AppError::InternalError.error_response();

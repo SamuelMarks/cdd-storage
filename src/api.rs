@@ -139,12 +139,14 @@ pub async fn download_artifact(
 }
 
 #[cfg(test)]
+/// Unit tests for the API module.
 mod tests {
     use super::*;
     use actix_web::{App, http::header, test};
     use std::error::Error;
     use tempfile::TempDir;
 
+    /// Tests test upload artifact success.
     #[actix_web::test]
     async fn test_upload_artifact_success() -> Result<(), Box<dyn Error>> {
         let tmp_dir = TempDir::new()?;
@@ -172,6 +174,7 @@ mod tests {
         Ok(())
     }
 
+    /// Tests test upload artifact unauthorized missing header.
     #[actix_web::test]
     async fn test_upload_artifact_unauthorized_missing_header() -> Result<(), Box<dyn Error>> {
         let tmp_dir = TempDir::new()?;
@@ -198,6 +201,7 @@ mod tests {
         Ok(())
     }
 
+    /// Tests test upload artifact unauthorized wrong key.
     #[actix_web::test]
     async fn test_upload_artifact_unauthorized_wrong_key() -> Result<(), Box<dyn Error>> {
         let tmp_dir = TempDir::new()?;
@@ -225,6 +229,7 @@ mod tests {
         Ok(())
     }
 
+    /// Tests test upload artifact unauthorized bad header value.
     #[actix_web::test]
     async fn test_upload_artifact_unauthorized_bad_header_value() -> Result<(), Box<dyn Error>> {
         let tmp_dir = TempDir::new()?;
@@ -252,6 +257,7 @@ mod tests {
         Ok(())
     }
 
+    /// Tests test download artifact success.
     #[actix_web::test]
     async fn test_download_artifact_success() -> Result<(), Box<dyn Error>> {
         let tmp_dir = TempDir::new()?;
@@ -295,6 +301,7 @@ mod tests {
         Ok(())
     }
 
+    /// Tests test download artifact not modified.
     #[actix_web::test]
     async fn test_download_artifact_not_modified() -> Result<(), Box<dyn Error>> {
         let tmp_dir = TempDir::new()?;
@@ -338,6 +345,7 @@ mod tests {
         Ok(())
     }
 
+    /// Tests test download artifact not found.
     #[actix_web::test]
     async fn test_download_artifact_not_found() -> Result<(), Box<dyn Error>> {
         let tmp_dir = TempDir::new()?;
@@ -364,6 +372,7 @@ mod tests {
         Ok(())
     }
 
+    /// Tests test upload artifact io error.
     #[actix_web::test]
     async fn test_upload_artifact_io_error() -> Result<(), Box<dyn Error>> {
         let tmp_file = tempfile::NamedTempFile::new()?;
@@ -394,6 +403,7 @@ mod tests {
         Ok(())
     }
 
+    /// Tests test download artifact io error.
     #[actix_web::test]
     async fn test_download_artifact_io_error() -> Result<(), Box<dyn Error>> {
         let tmp_file = tempfile::NamedTempFile::new()?;
@@ -424,6 +434,7 @@ mod tests {
         Ok(())
     }
 
+    /// Tests test download artifact etag mismatch.
     #[actix_web::test]
     async fn test_download_artifact_etag_mismatch() -> Result<(), Box<dyn Error>> {
         let tmp_dir = TempDir::new()?;
@@ -455,6 +466,7 @@ mod tests {
         Ok(())
     }
 
+    /// Tests test download artifact etag bad header.
     #[actix_web::test]
     async fn test_download_artifact_etag_bad_header() -> Result<(), Box<dyn Error>> {
         let tmp_dir = TempDir::new()?;
