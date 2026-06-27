@@ -1,6 +1,6 @@
 FROM rust:alpine AS builder
 WORKDIR /app
-RUN apk add --no-cache musl-dev
+RUN apk add --no-cache musl-dev gcc make pkgconfig
 COPY . .
 RUN cargo build --release
 
