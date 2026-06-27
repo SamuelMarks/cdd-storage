@@ -121,16 +121,19 @@ impl ArtifactStore for LocalDiskStore {
 }
 
 #[cfg(test)]
+/// Unit tests for the storage backend.
 mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    /// Tests that the `StoreKey` resolves correctly.
     #[test]
     fn test_store_key() {
         let key = StoreKey::new(String::from("foo/bar.txt"));
         assert_eq!(key.as_str(), "foo/bar.txt");
     }
 
+    /// Tests putting, getting, and deleting artifacts in `LocalDiskStore`.
     #[tokio::test]
     async fn test_local_disk_store_put_get_delete() -> Result<(), Box<dyn std::error::Error>> {
         let tmp_dir = TempDir::new()?;
@@ -162,6 +165,7 @@ mod tests {
         Ok(())
     }
 
+    /// Tests IO errors in `LocalDiskStore`.
     #[tokio::test]
     async fn test_local_disk_store_io_errors() -> Result<(), Box<dyn std::error::Error>> {
         // Test how the store behaves with an invalid base directory.
@@ -188,6 +192,7 @@ mod tests {
         Ok(())
     }
 
+    /// Tests getting a directory from `LocalDiskStore`.
     #[tokio::test]
     async fn test_local_disk_store_get_dir() -> Result<(), Box<dyn std::error::Error>> {
         let tmp_dir = tempfile::TempDir::new()?;
@@ -199,6 +204,7 @@ mod tests {
         Ok(())
     }
 
+    /// Tests putting data into a store with an empty base directory.
     #[tokio::test]
     async fn test_local_disk_store_no_parent() {
         let store = LocalDiskStore::new(PathBuf::new());
