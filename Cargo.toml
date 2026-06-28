@@ -4,12 +4,20 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-actix-web = "4.13.0"
-derive_more = { version = "2.1.1", features = ["full"] }
+actix-web = { version = "4.13.0", default-features = false, features = ["macros"] }
+derive_more = { version = "2.1.1", default-features = false, features = ["display", "error", "from"] }
 httpdate = "1.0.3"
 serde = { version = "1.0.228", features = ["derive"] }
 sha1 = "0.11.0"
-tokio = { version = "1.52.3", features = ["fs", "rt", "macros"] }
+tokio = { version = "1.52.3", default-features = false, features = ["fs"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"
+tokio = { version = "1.52.3", features = ["rt", "macros", "rt-multi-thread"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
