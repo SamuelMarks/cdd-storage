@@ -63,12 +63,15 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact_name: cdd-storage
+            asset_name: cdd-storage-x86_64-linux
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact_name: cdd-storage
+            asset_name: cdd-storage-aarch64-darwin
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact_name: cdd-storage.exe
+            asset_name: cdd-storage-x86_64-windows.exe
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -83,10 +86,12 @@ jobs:
         run: rustup target add ${{ matrix.target }}
       - name: Build Binary
         run: cargo build --release --target ${{ matrix.target }}
+      - name: Rename Release Asset
+        run: cp target/${{ matrix.target }}/release/${{ matrix.artifact_name }} target/${{ matrix.target }}/release/${{ matrix.asset_name }}
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         with:
-          files: target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
+          files: target/${{ matrix.target }}/release/${{ matrix.asset_name }}
           name: Release ${{ github.ref_name }}
 
   update_latest_tag:
