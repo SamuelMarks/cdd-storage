@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install dependencies
         run: |
@@ -63,18 +63,18 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact_name: cdd-storage
-            asset_name: cdd-storage-x86_64-linux
+            asset_name: cdd-storage-x86_64-unknown-linux-gnu
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact_name: cdd-storage
-            asset_name: cdd-storage-aarch64-darwin
+            asset_name: cdd-storage-aarch64-apple-darwin
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact_name: cdd-storage.exe
-            asset_name: cdd-storage-x86_64-windows.exe
+            asset_name: cdd-storage-x86_64-pc-windows-msvc.exe
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - name: Install dependencies (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
@@ -89,7 +89,7 @@ jobs:
       - name: Rename Release Asset
         run: cp target/${{ matrix.target }}/release/${{ matrix.artifact_name }} target/${{ matrix.target }}/release/${{ matrix.asset_name }}
       - name: Upload Release Asset
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: target/${{ matrix.target }}/release/${{ matrix.asset_name }}
           name: Release ${{ github.ref_name }}
@@ -103,7 +103,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Update latest tag (Local only, push disabled per policy)
         run: |
           git config user.name "github-actions[bot]"
