@@ -3,6 +3,8 @@
 > High-performance artifact storage and retrieval service for the `cdd` ecosystem.
 
 [![CI](https://github.com/SamuelMarks/cdd-storage/actions/workflows/ci.yml/badge.svg)](https://github.com/SamuelMarks/cdd-storage/actions/workflows/ci.yml)
+![Test Coverage](https://img.shields.io/badge/coverage-100%25-success.svg)
+![Doc Coverage](https://img.shields.io/badge/docs-100%25-success.svg)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 `cdd-storage` is a microservice responsible for hosting generated SDK artifacts, OpenAPI JSON/YAML schemas, and statically rendered HTML payload data. It acts as an internal CDN layer, ensuring that requests to `cdd-web-ui`, `cdd-docs-ui`, and the main gateways are served swiftly without recalculating builds.

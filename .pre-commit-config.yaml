@@ -4,7 +4,7 @@ repos:
     hooks:
       - id: mixed-line-ending
         args: ['--fix=lf']
-        exclude: \.(bat|cmd|ps1)$
+        exclude: '[.](bat|cmd|ps1)$'
   - repo: local
     hooks:
       - id: cargo-fmt
@@ -18,7 +18,23 @@ repos:
       - id: cargo-check
         name: cargo check
         description: Check the package for errors.
-        entry: cargo check --workspace
+        entry: cargo check --workspace --all-targets
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-clippy
+        name: cargo clippy
+        description: Lint Rust code with strict clippy warnings denied.
+        entry: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-doc
+        name: cargo doc
+        description: Verify documentation builds with zero warnings.
+        entry: bash -c 'RUSTDOCFLAGS="-D warnings" cargo doc --lib --no-deps --document-private-items'
         language: system
         types: [rust]
         pass_filenames: false
@@ -26,7 +42,7 @@ repos:
       - id: cargo-test
         name: cargo test
         description: Run tests.
-        entry: bash -c 'DATABASE_URL=postgres://postgres:password@localhost/cdd cargo test --workspace'
+        entry: cargo test --workspace --all-targets
         language: system
         types: [rust]
         pass_filenames: false

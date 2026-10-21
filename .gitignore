@@ -8,6 +8,9 @@ lcov.info
 *PLAN*.md
 scratch*
 *.tmp
+*-E
+*.orig
+*.rej
 
 # Common build and runtime artifacts
 build/
