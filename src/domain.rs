@@ -7,7 +7,7 @@
 //! timing attacks.
 
 use actix_web::web::Bytes;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt::{self, Write as _};
 use std::path::Path;
@@ -314,10 +314,153 @@ impl TryFrom<&str> for ArtifactVersion {
     }
 }
 
+/// Type alias for [`ArtifactVersion`] representing a validated version tag.
+pub type VersionTag = ArtifactVersion;
+
+/// Strongly-typed HTTP `Content-Type` MIME classification for hosted artifacts and documentation assets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, derive_more::Display)]
+pub enum ContentMimeType {
+    /// HTML document (`"text/html; charset=utf-8"`).
+    #[display("text/html; charset=utf-8")]
+    Html,
+    /// CSS stylesheet (`"text/css; charset=utf-8"`).
+    #[display("text/css; charset=utf-8")]
+    Css,
+    /// JavaScript module or script (`"application/javascript; charset=utf-8"`).
+    #[display("application/javascript; charset=utf-8")]
+    JavaScript,
+    /// JSON document (`"application/json"`).
+    #[display("application/json")]
+    Json,
+    /// YAML document (`"application/yaml"`).
+    #[display("application/yaml")]
+    Yaml,
+    /// SVG vector image (`"image/svg+xml"`).
+    #[display("image/svg+xml")]
+    Svg,
+    /// PNG raster image (`"image/png"`).
+    #[display("image/png")]
+    Png,
+    /// WebAssembly binary module (`"application/wasm"`).
+    #[display("application/wasm")]
+    Wasm,
+    /// ZIP archive (`"application/zip"`).
+    #[display("application/zip")]
+    Zip,
+    /// Plain text or Markdown document (`"text/plain; charset=utf-8"`).
+    #[display("text/plain; charset=utf-8")]
+    PlainText,
+    /// Arbitrary binary stream (`"application/octet-stream"`).
+    #[display("application/octet-stream")]
+    OctetStream,
+}
+
+impl ContentMimeType {
+    /// Infers the [`ContentMimeType`] from the extension of a validated [`RelativeArtifactPath`].
+    ///
+    /// Extension matching is performed case-insensitively across `.html`, `.htm`, `.css`,
+    /// `.js`, `.mjs`, `.json`, `.yaml`, `.yml`, `.svg`, `.png`, `.wasm`, `.zip`, `.txt`, and `.md`.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The validated relative artifact path.
+    ///
+    /// # Returns
+    ///
+    /// Returns the matching [`ContentMimeType`], or [`ContentMimeType::OctetStream`] for unknown extensions.
+    #[must_use]
+    pub fn from_path(path: &RelativeArtifactPath) -> Self {
+        let ext = Path::new(path.as_str())
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+        if ext.eq_ignore_ascii_case("html") || ext.eq_ignore_ascii_case("htm") {
+            Self::Html
+        } else if ext.eq_ignore_ascii_case("css") {
+            Self::Css
+        } else if ext.eq_ignore_ascii_case("js") || ext.eq_ignore_ascii_case("mjs") {
+            Self::JavaScript
+        } else if ext.eq_ignore_ascii_case("json") {
+            Self::Json
+        } else if ext.eq_ignore_ascii_case("yaml") || ext.eq_ignore_ascii_case("yml") {
+            Self::Yaml
+        } else if ext.eq_ignore_ascii_case("svg") {
+            Self::Svg
+        } else if ext.eq_ignore_ascii_case("png") {
+            Self::Png
+        } else if ext.eq_ignore_ascii_case("wasm") {
+            Self::Wasm
+        } else if ext.eq_ignore_ascii_case("zip") {
+            Self::Zip
+        } else if ext.eq_ignore_ascii_case("txt") || ext.eq_ignore_ascii_case("md") {
+            Self::PlainText
+        } else {
+            Self::OctetStream
+        }
+    }
+
+    /// Returns the static HTTP `Content-Type` header string for this MIME type.
+    ///
+    /// # Arguments
+    ///
+    /// * `self` - The [`ContentMimeType`] variant.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `&'static str` valid for an HTTP `Content-Type` header.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Html => "text/html; charset=utf-8",
+            Self::Css => "text/css; charset=utf-8",
+            Self::JavaScript => "application/javascript; charset=utf-8",
+            Self::Json => "application/json",
+            Self::Yaml => "application/yaml",
+            Self::Svg => "image/svg+xml",
+            Self::Png => "image/png",
+            Self::Wasm => "application/wasm",
+            Self::Zip => "application/zip",
+            Self::PlainText => "text/plain; charset=utf-8",
+            Self::OctetStream => "application/octet-stream",
+        }
+    }
+}
+
+/// Summary of a single published documentation site version and its hosted files.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DocSiteVersionSummary {
+    /// Organization identifier (`${GITHUB_ORG_NAME}`).
+    pub org_id: String,
+    /// Repository identifier (`${GITHUB_ORG_NAME}-sdk` or `${GITHUB_ORG_NAME}-sdk-${LANGUAGE}`).
+    pub repo_id: String,
+    /// Published version tag.
+    pub version: String,
+    /// Sorted list of relative file paths hosted under this version.
+    pub files: Vec<String>,
+}
+
+/// Index of all published documentation site versions and files for a repository.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DocSiteIndex {
+    /// Organization identifier (`${GITHUB_ORG_NAME}`).
+    pub org_id: String,
+    /// Repository identifier (`${GITHUB_ORG_NAME}-sdk` or `${GITHUB_ORG_NAME}-sdk-${LANGUAGE}`).
+    pub repo_id: String,
+    /// Deterministically sorted list of published versions.
+    pub versions: Vec<String>,
+    /// The latest published version, if at least one version exists.
+    pub latest_version: Option<String>,
+    /// Sorted list of relative file paths for the latest (or requested) version.
+    pub files: Vec<String>,
+}
+
 /// Strongly-typed, validated relative file path that guarantees zero path traversal.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, derive_more::Display, Deserialize)]
 #[serde(try_from = "String")]
 pub struct RelativeFilePath(String);
+
+/// Type alias for [`RelativeFilePath`] representing a validated relative artifact path.
+pub type RelativeArtifactPath = RelativeFilePath;
 
 impl RelativeFilePath {
     /// Returns the default artifact binary filename (`"artifact.bin"`).
@@ -328,6 +471,16 @@ impl RelativeFilePath {
     #[must_use]
     pub fn default_artifact_bin() -> Self {
         Self(String::from("artifact.bin"))
+    }
+
+    /// Returns the default documentation site index filename (`"index.html"`).
+    ///
+    /// # Returns
+    ///
+    /// Returns a [`RelativeFilePath`] representing `"index.html"`.
+    #[must_use]
+    pub fn default_index_html() -> Self {
+        Self(String::from("index.html"))
     }
 
     /// Returns the inner string slice of the relative file path.
@@ -344,6 +497,20 @@ impl RelativeFilePath {
         &self.0
     }
 
+    /// Infers the strongly-typed [`ContentMimeType`] from the file extension.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The [`RelativeFilePath`] reference.
+    ///
+    /// # Returns
+    ///
+    /// Returns the inferred [`ContentMimeType`].
+    #[must_use]
+    pub fn mime_type(&self) -> ContentMimeType {
+        ContentMimeType::from_path(self)
+    }
+
     /// Infers an appropriate HTTP `Content-Type` header value from the file extension.
     ///
     /// # Arguments
@@ -355,23 +522,7 @@ impl RelativeFilePath {
     /// Returns a static MIME type string (e.g. `"application/json"` or `"application/octet-stream"`).
     #[must_use]
     pub fn content_type(&self) -> &'static str {
-        let ext = Path::new(&self.0)
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
-        if ext.eq_ignore_ascii_case("json") {
-            "application/json"
-        } else if ext.eq_ignore_ascii_case("yaml") || ext.eq_ignore_ascii_case("yml") {
-            "application/yaml"
-        } else if ext.eq_ignore_ascii_case("html") || ext.eq_ignore_ascii_case("htm") {
-            "text/html; charset=utf-8"
-        } else if ext.eq_ignore_ascii_case("zip") {
-            "application/zip"
-        } else if ext.eq_ignore_ascii_case("txt") || ext.eq_ignore_ascii_case("md") {
-            "text/plain; charset=utf-8"
-        } else {
-            "application/octet-stream"
-        }
+        self.mime_type().as_str()
     }
 }
 
@@ -866,41 +1017,98 @@ mod tests {
         Ok(())
     }
 
-    /// Verifies [`RelativeFilePath`] validation, traversal rejection, and MIME content-type inference.
+    /// Verifies [`RelativeFilePath`] MIME content-type inference across all [`ContentMimeType`] variants.
     #[test]
-    fn test_relative_file_path_validation_and_content_type() -> Result<(), AppError> {
+    fn test_relative_file_path_content_mime_type() -> Result<(), AppError> {
         let default_bin = RelativeFilePath::default_artifact_bin();
         assert_eq!(default_bin.as_str(), "artifact.bin");
         assert_eq!(default_bin.as_ref(), "artifact.bin");
+        assert_eq!(default_bin.mime_type(), ContentMimeType::OctetStream);
         assert_eq!(default_bin.content_type(), "application/octet-stream");
+        assert_eq!(
+            ContentMimeType::OctetStream.to_string(),
+            "application/octet-stream"
+        );
 
-        let json_path = RelativeFilePath::try_from("v1/openapi.json")?;
-        assert_eq!(json_path.content_type(), "application/json");
+        let default_idx = RelativeFilePath::default_index_html();
+        assert_eq!(default_idx.as_str(), "index.html");
+        assert_eq!(default_idx.mime_type(), ContentMimeType::Html);
+        assert_eq!(default_idx.content_type(), "text/html; charset=utf-8");
 
-        let yaml_path = RelativeFilePath::try_from("specs/schema.yaml")?;
-        assert_eq!(yaml_path.content_type(), "application/yaml");
+        let cases = [
+            ("v1/openapi.json", ContentMimeType::Json, "application/json"),
+            (
+                "specs/schema.yaml",
+                ContentMimeType::Yaml,
+                "application/yaml",
+            ),
+            (
+                "specs/schema.YML",
+                ContentMimeType::Yaml,
+                "application/yaml",
+            ),
+            (
+                "docs/index.html",
+                ContentMimeType::Html,
+                "text/html; charset=utf-8",
+            ),
+            (
+                "docs/index.htm",
+                ContentMimeType::Html,
+                "text/html; charset=utf-8",
+            ),
+            (
+                "assets/styles.CSS",
+                ContentMimeType::Css,
+                "text/css; charset=utf-8",
+            ),
+            (
+                "assets/app.js",
+                ContentMimeType::JavaScript,
+                "application/javascript; charset=utf-8",
+            ),
+            (
+                "assets/module.MJS",
+                ContentMimeType::JavaScript,
+                "application/javascript; charset=utf-8",
+            ),
+            ("img/logo.svg", ContentMimeType::Svg, "image/svg+xml"),
+            ("img/logo.PNG", ContentMimeType::Png, "image/png"),
+            (
+                "pkg/renderer.wasm",
+                ContentMimeType::Wasm,
+                "application/wasm",
+            ),
+            ("sdk/client.zip", ContentMimeType::Zip, "application/zip"),
+            (
+                "README.txt",
+                ContentMimeType::PlainText,
+                "text/plain; charset=utf-8",
+            ),
+            (
+                "README.md",
+                ContentMimeType::PlainText,
+                "text/plain; charset=utf-8",
+            ),
+            (
+                "LICENSE",
+                ContentMimeType::OctetStream,
+                "application/octet-stream",
+            ),
+        ];
 
-        let yml_path = RelativeFilePath::try_from("specs/schema.YML")?;
-        assert_eq!(yml_path.content_type(), "application/yaml");
+        for (raw, expected_mime, expected_str) in cases {
+            let path = RelativeFilePath::try_from(raw)?;
+            assert_eq!(path.mime_type(), expected_mime);
+            assert_eq!(path.content_type(), expected_str);
+        }
 
-        let html_path = RelativeFilePath::try_from("docs/index.html")?;
-        assert_eq!(html_path.content_type(), "text/html; charset=utf-8");
+        Ok(())
+    }
 
-        let htm_path = RelativeFilePath::try_from("docs/index.htm")?;
-        assert_eq!(htm_path.content_type(), "text/html; charset=utf-8");
-
-        let zip_path = RelativeFilePath::try_from("sdk/client.zip")?;
-        assert_eq!(zip_path.content_type(), "application/zip");
-
-        let txt_path = RelativeFilePath::try_from("README.txt")?;
-        assert_eq!(txt_path.content_type(), "text/plain; charset=utf-8");
-
-        let md_path = RelativeFilePath::try_from("README.md")?;
-        assert_eq!(md_path.content_type(), "text/plain; charset=utf-8");
-
-        let no_ext = RelativeFilePath::try_from("LICENSE")?;
-        assert_eq!(no_ext.content_type(), "application/octet-stream");
-
+    /// Verifies [`RelativeFilePath`] validation and path traversal rejection.
+    #[test]
+    fn test_relative_file_path_validation() {
         assert!(matches!(
             RelativeFilePath::try_from(""),
             Err(AppError::InvalidIdentifier {
@@ -928,13 +1136,10 @@ mod tests {
             "./file.json",
             "a/./file.json",
         ] {
-            assert!(
-                matches!(
-                    RelativeFilePath::try_from(bad),
-                    Err(AppError::PathTraversalAttempt)
-                ),
-                "Expected PathTraversalAttempt for {bad}"
-            );
+            assert!(matches!(
+                RelativeFilePath::try_from(bad),
+                Err(AppError::PathTraversalAttempt)
+            ));
         }
 
         assert!(matches!(
@@ -944,6 +1149,36 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    /// Verifies serialization and deserialization of [`DocSiteVersionSummary`] and [`DocSiteIndex`].
+    #[test]
+    fn test_doc_site_index_and_version_summary_serde() -> Result<(), Box<dyn std::error::Error>> {
+        let summary = DocSiteVersionSummary {
+            org_id: String::from("acme"),
+            repo_id: String::from("acme-sdk-rust"),
+            version: String::from("v1.0.0"),
+            files: vec![String::from("docs.json"), String::from("index.html")],
+        };
+        let summary_json = serde_json::to_string(&summary)?;
+        let decoded_summary: DocSiteVersionSummary = serde_json::from_str(&summary_json)?;
+        assert_eq!(decoded_summary, summary);
+
+        let index = DocSiteIndex {
+            org_id: String::from("acme"),
+            repo_id: String::from("acme-sdk"),
+            versions: vec![String::from("v0.1.0"), String::from("v1.0.0")],
+            latest_version: Some(String::from("v1.0.0")),
+            files: vec![
+                String::from("arazzo.json"),
+                String::from("docs.json"),
+                String::from("index.html"),
+                String::from("openapi.json"),
+            ],
+        };
+        let index_json = serde_json::to_string(&index)?;
+        let decoded_index: DocSiteIndex = serde_json::from_str(&index_json)?;
+        assert_eq!(decoded_index, index);
 
         Ok(())
     }
@@ -993,7 +1228,7 @@ mod tests {
     #[test]
     fn test_store_key_and_payload_validation() -> Result<(), AppError> {
         let org = OrgId::try_from("acme")?;
-        let repo = RepoId::try_from(" billing-api ").unwrap_or(RepoId::try_from("billing-api")?);
+        let repo = RepoId::try_from("billing-api")?;
         let ver = ArtifactVersion::try_from("v1.2.0")?;
         let file = RelativeFilePath::try_from("openapi.json")?;
 

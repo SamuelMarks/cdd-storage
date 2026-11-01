@@ -56,6 +56,18 @@ pub fn configure_app<S: ArtifactStore>(
         .route(
             "/artifact/{org_id}/{repo_id}/{file_path:.*}",
             web::delete().to(api::delete_artifact::<S>),
+        )
+        .route(
+            "/sites/{org_id}/{repo_id}",
+            web::get().to(api::get_doc_site_index::<S>),
+        )
+        .route(
+            "/sites/{org_id}/{repo_id}/{version}",
+            web::get().to(api::get_doc_site_version::<S>),
+        )
+        .route(
+            "/sites/{org_id}/{repo_id}/{version}/{file_path:.*}",
+            web::get().to(api::get_doc_site_file::<S>),
         );
 }
 
@@ -145,6 +157,15 @@ mod tests {
         vars.insert(String::from("API_KEY"), String::from("test-key"));
 
         run_with_vars(&vars, true).await?;
+
+        // Also exercise the `stop_immediately == false` branch by aborting the spawned server task
+        // once it has bound and entered `server.await`.
+        let vars_clone = vars.clone();
+        let join_handle =
+            actix_web::rt::spawn(async move { run_with_vars(&vars_clone, false).await });
+        actix_web::rt::task::yield_now().await;
+        join_handle.abort();
+
         Ok(())
     }
 

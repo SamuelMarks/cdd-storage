@@ -44,6 +44,9 @@ pub enum AppError {
     Unauthorized,
 }
 
+/// Type alias for [`AppError`] representing storage and HTTP errors across `cdd-storage`.
+pub type StorageError = AppError;
+
 impl ResponseError for AppError {
     /// Returns the appropriate HTTP [`StatusCode`] for this error.
     ///

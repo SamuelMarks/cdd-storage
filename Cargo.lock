@@ -206,12 +206,13 @@ dependencies = [
 
 [[package]]
 name = "cdd-storage"
-version = "0.0.1"
+version = "0.0.5"
 dependencies = [
  "actix-web",
  "derive_more",
  "httpdate",
  "serde",
+ "serde_json",
  "sha2",
  "tempfile",
  "tokio",

@@ -12,6 +12,7 @@
 ## Features
 - **Artifact Hosting:** Persists the output from `cdd-engine`.
 - **Fast Lookups:** Indexes schema and API doc versions for rapid retrieval.
+- **Official Doc Site Hosting:** Serves versioned `cdd-docs-ui` static bundles, OpenAPI/Arazzo specs, and language-specific documentation (`GET /sites/{org_id}/{repo_id}`, `GET /sites/{org_id}/{repo_id}/{version}`, and `GET /sites/{org_id}/{repo_id}/{version}/{file_path:.*}`) with strongly-typed MIME headers and `ETag` conditional caching.
 - **Provider Agnostic:** Designed to wrap cloud block storage (S3/GCS) or fallback to local disk storage for single-node deployments.
 
 ## License

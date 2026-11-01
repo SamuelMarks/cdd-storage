@@ -6,6 +6,9 @@
 //! - `POST /upload/{org_id}/{repo_id}/{version}/{file_path:.*}`: Uploads a specific file under a version.
 //! - `GET /artifact/{org_id}/{repo_id}/{file_path:.*}`: Downloads an artifact with `ETag`, `Last-Modified`, `Cache-Control`, and `Content-Type` headers, supporting `304 Not Modified` via `If-None-Match`.
 //! - `DELETE /artifact/{org_id}/{repo_id}/{file_path:.*}`: Deletes a stored artifact (requires Bearer authentication).
+//! - `GET /sites/{org_id}/{repo_id}`: Returns the [`crate::domain::DocSiteIndex`] JSON listing all published documentation versions and latest version files.
+//! - `GET /sites/{org_id}/{repo_id}/{version}`: Returns the [`crate::domain::DocSiteVersionSummary`] JSON (or serves `index.html` when requested via `/sites/{org_id}/{repo_id}/{version}/`).
+//! - `GET /sites/{org_id}/{repo_id}/{version}/{file_path:.*}`: Serves static documentation site files with resolved [`crate::domain::ContentMimeType`] headers and `ETag` conditional caching.
 
 use actix_web::http::{StatusCode, header};
 use actix_web::{FromRequest, HttpRequest, HttpResponse, Responder, dev::Payload, web};
@@ -14,7 +17,8 @@ use serde::Deserialize;
 use std::future::{Ready, ready};
 
 use crate::domain::{
-    ApiKey, ArtifactVersion, OrgId, RelativeFilePath, RepoId, StoreKey, ensure_non_empty_payload,
+    ApiKey, ArtifactVersion, DocSiteIndex, DocSiteVersionSummary, OrgId, RelativeFilePath, RepoId,
+    StoreKey, ensure_non_empty_payload,
 };
 use crate::error::AppError;
 use crate::storage::{ArtifactStore, LocalDiskStore};
@@ -78,6 +82,28 @@ pub struct ArtifactPathParams {
     pub repo_id: RepoId,
     /// Validated relative file path within the repository (e.g., `v1/artifact.bin` or `schema.json`).
     pub file_path: RelativeFilePath,
+}
+
+/// Strongly-typed path parameters for `GET /sites/{org_id}/{repo_id}`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct SiteRepoParams {
+    /// Validated organization identifier.
+    pub org_id: OrgId,
+    /// Validated repository identifier (`${GITHUB_ORG_NAME}-sdk` or `${GITHUB_ORG_NAME}-sdk-${LANGUAGE}`).
+    pub repo_id: RepoId,
+}
+
+/// Path parameters for `GET /sites/{org_id}/{repo_id}/{version}/{file_path:.*}`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct SiteFileParams {
+    /// Validated organization identifier.
+    pub org_id: OrgId,
+    /// Validated repository identifier.
+    pub repo_id: RepoId,
+    /// Validated documentation release version.
+    pub version: ArtifactVersion,
+    /// Raw relative file path within the versioned documentation bundle (empty defaults to `index.html`).
+    pub file_path: String,
 }
 
 /// Typed Actix Web extractor for the `Authorization` header that is `Send`-safe across `.await` points.
@@ -345,6 +371,160 @@ pub async fn delete_artifact<S: ArtifactStore>(
     Ok(HttpResponse::NoContent().finish())
 }
 
+/// Returns the [`DocSiteIndex`] JSON for an organization and repository (`GET /sites/{org_id}/{repo_id}`).
+///
+/// Lists all published documentation versions for `${GITHUB_ORG_NAME}-sdk` (monorepo) or
+/// `${GITHUB_ORG_NAME}-sdk-${LANGUAGE}` (polyrepo), along with the latest version and its file manifest.
+///
+/// # Arguments
+///
+/// * `state` - Shared [`AppState`] containing the storage backend.
+/// * `path` - Validated [`SiteRepoParams`] (`org_id`, `repo_id`).
+///
+/// # Returns
+///
+/// Returns `200 OK` with a JSON-serialized [`DocSiteIndex`].
+///
+/// # Errors
+///
+/// Returns [`AppError::NotFound`] if no versions exist for the repository, or [`AppError::IoError`]
+/// if listing versions or files fails.
+pub async fn get_doc_site_index<S: ArtifactStore>(
+    state: web::Data<AppState<S>>,
+    path: web::Path<SiteRepoParams>,
+) -> Result<HttpResponse, AppError> {
+    let params = path.into_inner();
+    let versions = state
+        .store
+        .list_versions(&params.org_id, &params.repo_id)
+        .await?;
+
+    let Some(latest_str) = versions.last().cloned() else {
+        return Err(AppError::NotFound);
+    };
+
+    let latest_version = ArtifactVersion::try_from(latest_str.as_str())?;
+    let files = state
+        .store
+        .list_version_files(&params.org_id, &params.repo_id, &latest_version)
+        .await?;
+
+    let index = DocSiteIndex {
+        org_id: params.org_id.to_string(),
+        repo_id: params.repo_id.to_string(),
+        versions,
+        latest_version: Some(latest_str),
+        files,
+    };
+
+    Ok(HttpResponse::Ok().json(index))
+}
+
+/// Returns the [`DocSiteVersionSummary`] JSON for a specific documentation site version
+/// (`GET /sites/{org_id}/{repo_id}/{version}`).
+///
+/// # Arguments
+///
+/// * `state` - Shared [`AppState`] containing the storage backend.
+/// * `path` - Validated [`UploadVersionParams`] (`org_id`, `repo_id`, `version`).
+///
+/// # Returns
+///
+/// Returns `200 OK` with a JSON-serialized [`DocSiteVersionSummary`].
+///
+/// # Errors
+///
+/// Returns [`AppError::NotFound`] if the version has no published files, or [`AppError::IoError`]
+/// if listing files fails.
+pub async fn get_doc_site_version<S: ArtifactStore>(
+    state: web::Data<AppState<S>>,
+    path: web::Path<UploadVersionParams>,
+) -> Result<HttpResponse, AppError> {
+    let params = path.into_inner();
+    let files = state
+        .store
+        .list_version_files(&params.org_id, &params.repo_id, &params.version)
+        .await?;
+
+    if files.is_empty() {
+        return Err(AppError::NotFound);
+    }
+
+    let summary = DocSiteVersionSummary {
+        org_id: params.org_id.to_string(),
+        repo_id: params.repo_id.to_string(),
+        version: params.version.to_string(),
+        files,
+    };
+
+    Ok(HttpResponse::Ok().json(summary))
+}
+
+/// Serves a static documentation file from a specific version (`GET /sites/{org_id}/{repo_id}/{version}/{file_path:.*}`).
+///
+/// If `file_path` is empty (e.g., `/sites/{org_id}/{repo_id}/{version}/`), defaults to serving `index.html`.
+/// Sets the appropriate [`crate::domain::ContentMimeType`] header and supports `ETag` / `If-None-Match`
+/// `304 Not Modified` responses.
+///
+/// # Arguments
+///
+/// * `if_none_match` - The extracted [`IfNoneMatchHeader`].
+/// * `state` - Shared [`AppState`] containing the storage backend.
+/// * `path` - Validated [`SiteFileParams`] (`org_id`, `repo_id`, `version`, `file_path`).
+///
+/// # Returns
+///
+/// Returns `200 OK` with the static asset body and MIME/caching headers, or `304 Not Modified`.
+///
+/// # Errors
+///
+/// Returns [`AppError::InvalidIdentifier`]/[`AppError::PathTraversalAttempt`] if `file_path` is unsafe,
+/// [`AppError::NotFound`] if the asset does not exist, or [`AppError::IoError`] on storage failure.
+pub async fn get_doc_site_file<S: ArtifactStore>(
+    if_none_match: IfNoneMatchHeader,
+    state: web::Data<AppState<S>>,
+    path: web::Path<SiteFileParams>,
+) -> Result<HttpResponse, AppError> {
+    let params = path.into_inner();
+    let resolved_file_path = if params.file_path.is_empty() {
+        RelativeFilePath::default_index_html()
+    } else {
+        RelativeFilePath::try_from(params.file_path)?
+    };
+
+    let content_type = resolved_file_path.content_type();
+    let store_key = StoreKey::for_versioned_artifact(
+        &params.org_id,
+        &params.repo_id,
+        &params.version,
+        &resolved_file_path,
+    );
+
+    let artifact = state
+        .store
+        .get(&store_key)
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    if if_none_match
+        .as_deref()
+        .is_some_and(|header_val| artifact.etag.matches_if_none_match(header_val))
+    {
+        return Ok(HttpResponse::NotModified()
+            .insert_header((header::ETAG, artifact.etag.as_str()))
+            .finish());
+    }
+
+    let last_modified_http = fmt_http_date(artifact.modified);
+
+    Ok(HttpResponse::Ok()
+        .insert_header((header::CONTENT_TYPE, content_type))
+        .insert_header((header::ETAG, artifact.etag.as_str()))
+        .insert_header((header::LAST_MODIFIED, last_modified_http))
+        .insert_header((header::CACHE_CONTROL, "public, max-age=3600"))
+        .body(artifact.data))
+}
+
 #[cfg(test)]
 /// Unit and integration tests for the HTTP API handlers.
 mod tests {
@@ -379,6 +559,29 @@ mod tests {
         async fn delete(&self, _key: &StoreKey) -> Result<(), AppError> {
             std::future::ready(Err(AppError::from(io::Error::other(
                 "simulated delete failure",
+            ))))
+            .await
+        }
+
+        async fn list_versions(
+            &self,
+            _org_id: &OrgId,
+            _repo_id: &RepoId,
+        ) -> Result<Vec<String>, AppError> {
+            std::future::ready(Err(AppError::from(io::Error::other(
+                "simulated list_versions failure",
+            ))))
+            .await
+        }
+
+        async fn list_version_files(
+            &self,
+            _org_id: &OrgId,
+            _repo_id: &RepoId,
+            _version: &ArtifactVersion,
+        ) -> Result<Vec<String>, AppError> {
+            std::future::ready(Err(AppError::from(io::Error::other(
+                "simulated list_version_files failure",
             ))))
             .await
         }
@@ -646,6 +849,209 @@ mod tests {
         assert_eq!(
             test::call_service(&app, delete_req).await.status(),
             StatusCode::INTERNAL_SERVER_ERROR
+        );
+
+        let site_index_req = test::TestRequest::get()
+            .uri("/sites/my-org/my-org-sdk")
+            .to_request();
+        assert_eq!(
+            test::call_service(&app, site_index_req).await.status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+
+        let site_version_req = test::TestRequest::get()
+            .uri("/sites/my-org/my-org-sdk/v1.0.0")
+            .to_request();
+        assert_eq!(
+            test::call_service(&app, site_version_req).await.status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+
+        let site_file_req = test::TestRequest::get()
+            .uri("/sites/my-org/my-org-sdk/v1.0.0/index.html")
+            .to_request();
+        assert_eq!(
+            test::call_service(&app, site_file_req).await.status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+
+        Ok(())
+    }
+
+    /// Verifies Official Doc Site hosting endpoints (`GET /sites/{org_id}/{repo_id}`,
+    /// `GET /sites/{org_id}/{repo_id}/{version}`, and `GET /sites/{org_id}/{repo_id}/{version}/{file_path:.*}`)
+    /// across monorepo and polyrepo namespaces, MIME headers, `304 Not Modified`, and `404 Not Found`.
+    #[actix_web::test]
+    async fn test_official_doc_site_endpoints() -> Result<(), Box<dyn Error>> {
+        let tmp_dir = TempDir::new()?;
+        let store = LocalDiskStore::new(tmp_dir.path().to_path_buf());
+        let state = web::Data::new(AppState::new(store, ApiKey::try_from("secret")?));
+        let app = test::init_service(App::new().configure(|cfg| configure_app(cfg, state))).await;
+
+        // 1. Before any uploads, GET /sites/acme/acme-sdk and /sites/acme/acme-sdk/v1.0.0 return 404
+        let missing_index_req = test::TestRequest::get()
+            .uri("/sites/acme/acme-sdk")
+            .to_request();
+        assert_eq!(
+            test::call_service(&app, missing_index_req).await.status(),
+            StatusCode::NOT_FOUND
+        );
+
+        let missing_ver_req = test::TestRequest::get()
+            .uri("/sites/acme/acme-sdk/v1.0.0")
+            .to_request();
+        assert_eq!(
+            test::call_service(&app, missing_ver_req).await.status(),
+            StatusCode::NOT_FOUND
+        );
+
+        // 2. Upload v0.1.0 and v1.0.0 doc site bundles for monorepo (`acme-sdk`) and polyrepo (`acme-sdk-rust`)
+        for (uri, payload) in [
+            ("/upload/acme/acme-sdk/v0.1.0/index.html", "<html>v0</html>"),
+            (
+                "/upload/acme/acme-sdk/v1.0.0/index.html",
+                "<!doctype html><html><body>Docs</body></html>",
+            ),
+            (
+                "/upload/acme/acme-sdk/v1.0.0/docs.json",
+                r#"{"sdk":"acme"}"#,
+            ),
+            (
+                "/upload/acme/acme-sdk/v1.0.0/assets/app.js",
+                "console.log('cdd');",
+            ),
+            (
+                "/upload/acme/acme-sdk/v1.0.0/assets/style.css",
+                "body { margin: 0; }",
+            ),
+            (
+                "/upload/acme/acme-sdk-rust/v1.0.0/rustdoc/index.html",
+                "<html>rustdoc</html>",
+            ),
+        ] {
+            let req = test::TestRequest::post()
+                .uri(uri)
+                .insert_header((header::AUTHORIZATION, "Bearer secret"))
+                .set_payload(payload)
+                .to_request();
+            assert_eq!(
+                test::call_service(&app, req).await.status(),
+                StatusCode::CREATED
+            );
+        }
+
+        // 3. GET /sites/acme/acme-sdk returns DocSiteIndex with sorted versions and latest_version files
+        let index_req = test::TestRequest::get()
+            .uri("/sites/acme/acme-sdk")
+            .to_request();
+        let index_resp = test::call_service(&app, index_req).await;
+        assert_eq!(index_resp.status(), StatusCode::OK);
+        let index_bytes = to_bytes(index_resp.into_body()).await?;
+        let site_index: DocSiteIndex = serde_json::from_slice(&index_bytes)?;
+        assert_eq!(site_index.org_id, "acme");
+        assert_eq!(site_index.repo_id, "acme-sdk");
+        assert_eq!(site_index.versions, vec!["v0.1.0", "v1.0.0"]);
+        assert_eq!(site_index.latest_version.as_deref(), Some("v1.0.0"));
+        assert_eq!(
+            site_index.files,
+            vec![
+                "assets/app.js",
+                "assets/style.css",
+                "docs.json",
+                "index.html"
+            ]
+        );
+
+        // 4. GET /sites/acme/acme-sdk/v1.0.0 returns DocSiteVersionSummary
+        let ver_req = test::TestRequest::get()
+            .uri("/sites/acme/acme-sdk/v1.0.0")
+            .to_request();
+        let ver_resp = test::call_service(&app, ver_req).await;
+        assert_eq!(ver_resp.status(), StatusCode::OK);
+        let ver_bytes = to_bytes(ver_resp.into_body()).await?;
+        let ver_summary: DocSiteVersionSummary = serde_json::from_slice(&ver_bytes)?;
+        assert_eq!(ver_summary.version, "v1.0.0");
+        assert_eq!(ver_summary.files.len(), 4);
+
+        // 5. GET /sites/acme/acme-sdk/v1.0.0/ (empty file_path) defaults to index.html with text/html MIME
+        let default_html_req = test::TestRequest::get()
+            .uri("/sites/acme/acme-sdk/v1.0.0/")
+            .to_request();
+        let default_html_resp = test::call_service(&app, default_html_req).await;
+        assert_eq!(default_html_resp.status(), StatusCode::OK);
+        assert_eq!(
+            default_html_resp
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .ok_or("missing Content-Type")?
+                .to_str()?,
+            "text/html; charset=utf-8"
+        );
+        let etag = default_html_resp
+            .headers()
+            .get(header::ETAG)
+            .ok_or("missing ETag")?
+            .to_str()?
+            .to_owned();
+        let html_body = to_bytes(default_html_resp.into_body()).await?;
+        assert_eq!(
+            html_body.as_ref(),
+            b"<!doctype html><html><body>Docs</body></html>"
+        );
+
+        // 6. Conditional GET with matching ETag -> 304 Not Modified
+        let cached_html_req = test::TestRequest::get()
+            .uri("/sites/acme/acme-sdk/v1.0.0/")
+            .insert_header((header::IF_NONE_MATCH, etag.as_str()))
+            .to_request();
+        let cached_html_resp = test::call_service(&app, cached_html_req).await;
+        assert_eq!(cached_html_resp.status(), StatusCode::NOT_MODIFIED);
+
+        // 7. Serve JS and CSS assets with accurate MIME headers
+        let js_req = test::TestRequest::get()
+            .uri("/sites/acme/acme-sdk/v1.0.0/assets/app.js")
+            .to_request();
+        let js_resp = test::call_service(&app, js_req).await;
+        assert_eq!(js_resp.status(), StatusCode::OK);
+        assert_eq!(
+            js_resp
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .ok_or("missing Content-Type")?
+                .to_str()?,
+            "application/javascript; charset=utf-8"
+        );
+
+        let css_req = test::TestRequest::get()
+            .uri("/sites/acme/acme-sdk/v1.0.0/assets/style.css")
+            .to_request();
+        let css_resp = test::call_service(&app, css_req).await;
+        assert_eq!(css_resp.status(), StatusCode::OK);
+        assert_eq!(
+            css_resp
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .ok_or("missing Content-Type")?
+                .to_str()?,
+            "text/css; charset=utf-8"
+        );
+
+        // 8. Missing file under valid version returns 404 Not Found
+        let missing_file_req = test::TestRequest::get()
+            .uri("/sites/acme/acme-sdk/v1.0.0/missing.html")
+            .to_request();
+        assert_eq!(
+            test::call_service(&app, missing_file_req).await.status(),
+            StatusCode::NOT_FOUND
+        );
+
+        // 9. Unsafe file_path under /sites/... returns 400 Bad Request
+        let bad_file_req = test::TestRequest::get()
+            .uri("/sites/acme/acme-sdk/v1.0.0/bad$file.html")
+            .to_request();
+        assert_eq!(
+            test::call_service(&app, bad_file_req).await.status(),
+            StatusCode::BAD_REQUEST
         );
 
         Ok(())
